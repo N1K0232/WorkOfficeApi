@@ -84,9 +84,14 @@ builder.Services.AddProblemDetails(options =>
 });
 
 var app = builder.Build();
+app.UseHttpsRedirection();
+app.UseProblemDetails();
 app.UseSwagger();
 app.UseSwaggerUI();
-app.UseHttpsRedirection();
+app.UseSerilogRequestLogging(options =>
+{
+    options.IncludeQueryInRequestPath = true;
+});
 app.UseAuthorization();
 app.MapControllers();
 app.Run();
