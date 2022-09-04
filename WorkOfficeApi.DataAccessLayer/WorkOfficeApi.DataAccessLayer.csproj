@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WorkOfficeApi.Database\WorkOfficeApi.Database.sqlproj" />
+    <ProjectReference Include="..\WorkOfficeApi.Shared\WorkOfficeApi.Shared.csproj" />
   </ItemGroup>
 
 </Project>
