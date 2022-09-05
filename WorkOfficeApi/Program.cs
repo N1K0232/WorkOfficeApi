@@ -5,6 +5,8 @@ using Microsoft.OpenApi.Models;
 using Serilog;
 using System.Text.Json.Serialization;
 using TinyHelpers.Json.Serialization;
+using WorkOfficeApi.BusinessLayer.Services;
+using WorkOfficeApi.BusinessLayer.Services.Interfaces;
 using WorkOfficeApi.DataAccessLayer;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -86,6 +88,8 @@ builder.Services.AddProblemDetails(options =>
     options.Map<NotImplementedException>(_ => new StatusCodeProblemDetails(StatusCodes.Status503ServiceUnavailable));
     options.Map<DbUpdateException>(_ => new StatusCodeProblemDetails(StatusCodes.Status500InternalServerError));
 });
+
+builder.Services.AddScoped<IWorkerService, WorkerService>();
 
 var app = builder.Build();
 app.UseHttpsRedirection();
