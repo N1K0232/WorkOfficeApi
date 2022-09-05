@@ -22,6 +22,7 @@ public sealed class WorkerService : IWorkerService
 		this.mapper = mapper;
 	}
 
+
 	public async Task DeleteAsync(Guid workerId)
 	{
 		var worker = await dataContext.GetAsync<Entities.Worker>(workerId);
