@@ -162,7 +162,7 @@ public sealed class DataContext : DbContext, IDataContext
 	{
 		if (action is null)
 		{
-			throw new ArgumentNullException(nameof(action));
+			throw new ArgumentNullException(nameof(action), "cannot perform action");
 		}
 
 		cancellationToken.ThrowIfCancellationRequested();
