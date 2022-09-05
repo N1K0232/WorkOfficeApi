@@ -1,6 +1,7 @@
 using Hellang.Middleware.ProblemDetails;
 using MicroElements.Swashbuckle.FluentValidation.AspNetCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
 using Serilog;
 using System.Text.Json.Serialization;
 using TinyHelpers.Json.Serialization;
@@ -26,11 +27,14 @@ builder.Services.AddControllers()
     });
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen()
-    .AddFluentValidationRulesToSwagger(options =>
-    {
-        options.SetNotNullableIfMinLengthGreaterThenZero = true;
-    });
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo { Title = "WorkOfficeApi", Version = "v1" });
+})
+.AddFluentValidationRulesToSwagger(options =>
+{
+    options.SetNotNullableIfMinLengthGreaterThenZero = true;
+});
 
 string connectionString = builder.Configuration.GetConnectionString("SqlConnection");
 builder.Services.AddSqlServer<DataContext>(connectionString, sqlServerOptionsAction: options =>
@@ -87,7 +91,11 @@ var app = builder.Build();
 app.UseHttpsRedirection();
 app.UseProblemDetails();
 app.UseSwagger();
-app.UseSwaggerUI();
+app.UseSwaggerUI(options =>
+{
+    options.RoutePrefix = string.Empty;
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "WorkOfficeApi");
+});
 app.UseSerilogRequestLogging(options =>
 {
     options.IncludeQueryInRequestPath = true;
