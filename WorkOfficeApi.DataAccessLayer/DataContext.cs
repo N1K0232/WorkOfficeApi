@@ -70,10 +70,10 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 
 	public Task<TEntity> GetAsync<TEntity>(params object[] keyValues) where TEntity : BaseEntity
 	{
-		using var source = new CancellationTokenSource();
+		CancellationToken token = CancellationToken;
 
 		var set = Set<TEntity>();
-		return set.FindAsync(keyValues, source.Token).AsTask();
+		return set.FindAsync(keyValues, token).AsTask();
 	}
 
 	public IQueryable<TEntity> GetData<TEntity>(bool ignoreQueryFilters = false, bool trackingChanges = false) where TEntity : BaseEntity
