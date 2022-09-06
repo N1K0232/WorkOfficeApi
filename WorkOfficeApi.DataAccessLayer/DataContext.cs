@@ -1,15 +1,41 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using System.Reflection;
 using WorkOfficeApi.DataAccessLayer.Entities.Common;
 using WorkOfficeApi.DataAccessLayer.Extensions;
 
 namespace WorkOfficeApi.DataAccessLayer;
 
-public sealed class DataContext : DbContext, IDataContext
+public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 {
+	private CancellationTokenSource source;
+
 	public DataContext(DbContextOptions<DataContext> options) : base(options)
 	{
+		source = null;
+	}
+
+	private CancellationToken CancellationToken
+	{
+		get
+		{
+			CancellationToken cancellationToken;
+			source ??= new CancellationTokenSource();
+
+			try
+			{
+				cancellationToken = source.Token;
+			}
+			catch (Exception)
+			{
+				source.Cancel();
+				cancellationToken = source.Token;
+			}
+
+			return cancellationToken;
+		}
 	}
 
 	public void Delete<TEntity>(TEntity entity) where TEntity : BaseEntity
@@ -60,7 +86,8 @@ public sealed class DataContext : DbContext, IDataContext
 		}
 
 		return trackingChanges ?
-			set.AsTracking() : set.AsNoTrackingWithIdentityResolution();
+			set.AsTracking() :
+			set.AsNoTrackingWithIdentityResolution();
 	}
 
 	public void Insert<TEntity>(TEntity entity) where TEntity : BaseEntity
@@ -75,19 +102,8 @@ public sealed class DataContext : DbContext, IDataContext
 
 	public Task SaveAsync()
 	{
-		using var source = new CancellationTokenSource();
-		return SaveAsync(source.Token);
-	}
-
-	public Task ExecuteTransactionAsync(Func<Task> action)
-	{
-		using var source = new CancellationTokenSource();
-		return ExecuteTransactionAsync(action, source.Token);
-	}
-
-	private Task SaveAsync(CancellationToken cancellationToken)
-	{
-		cancellationToken.ThrowIfCancellationRequested();
+		CancellationToken token = CancellationToken;
+		token.ThrowIfCancellationRequested();
 
 		try
 		{
@@ -142,7 +158,7 @@ public sealed class DataContext : DbContext, IDataContext
 				}
 			}
 
-			return SaveChangesAsync(cancellationToken);
+			return SaveChangesAsync(token);
 		}
 		catch (DbUpdateConcurrencyException ex)
 		{
@@ -158,37 +174,34 @@ public sealed class DataContext : DbContext, IDataContext
 		}
 	}
 
-	private Task ExecuteTransactionAsync(Func<Task> action, CancellationToken cancellationToken)
+	public Task ExecuteTransactionAsync(Func<Task> action)
 	{
 		if (action is null)
 		{
 			throw new ArgumentNullException(nameof(action), "cannot perform action");
 		}
 
-		cancellationToken.ThrowIfCancellationRequested();
+		CancellationToken token = CancellationToken;
+		token.ThrowIfCancellationRequested();
 
-		var database = Database;
-		var strategy = database.CreateExecutionStrategy();
+		DatabaseFacade database = Database;
+		IExecutionStrategy strategy = database.CreateExecutionStrategy();
 
 		return strategy.ExecuteAsync(async () =>
 		{
-			using var transaction = await database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+			using var transaction = await database.BeginTransactionAsync(token).ConfigureAwait(false);
 			await action.Invoke().ConfigureAwait(false);
-			await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+			await transaction.CommitAsync(token).ConfigureAwait(false);
 		});
 	}
 
 	protected override void OnModelCreating(ModelBuilder modelBuilder)
 	{
-		OnModelBuilderInternal(modelBuilder);
-		base.OnModelCreating(modelBuilder);
-	}
+		modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+		modelBuilder.ApplyQueryFilter(this);
+		modelBuilder.ApplyTrimStringConverter();
 
-	private void OnModelBuilderInternal(ModelBuilder builder)
-	{
-		builder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
-		builder.ApplyQueryFilter(this);
-		builder.ApplyTrimStringConverter();
+		base.OnModelCreating(modelBuilder);
 	}
 
 	private IEnumerable<EntityEntry> Entries()
@@ -203,5 +216,13 @@ public sealed class DataContext : DbContext, IDataContext
 	private void ApplyQueryFilter<TEntity>(ModelBuilder builder) where TEntity : DeletableEntity
 	{
 		builder.Entity<TEntity>().HasQueryFilter(x => !x.IsDeleted && x.DeletedDate == null);
+	}
+
+	public override void Dispose()
+	{
+		base.Dispose();
+
+		source.Dispose();
+		GC.SuppressFinalize(this);
 	}
 }
