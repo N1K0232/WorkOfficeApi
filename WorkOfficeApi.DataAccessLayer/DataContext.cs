@@ -217,12 +217,4 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 	{
 		builder.Entity<TEntity>().HasQueryFilter(x => !x.IsDeleted && x.DeletedDate == null);
 	}
-
-	public override void Dispose()
-	{
-		base.Dispose();
-
-		source.Dispose();
-		GC.SuppressFinalize(this);
-	}
 }
