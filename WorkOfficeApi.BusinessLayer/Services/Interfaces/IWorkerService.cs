@@ -4,7 +4,7 @@ using WorkOfficeApi.Shared.Requests;
 
 namespace WorkOfficeApi.BusinessLayer.Services.Interfaces;
 
-public interface IWorkerService
+public interface IWorkerService : IDisposable
 {
     Task DeleteAsync(Guid workerId);
 

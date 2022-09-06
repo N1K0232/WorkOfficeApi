@@ -22,6 +22,11 @@ public sealed class WorkerService : IWorkerService
 		this.mapper = mapper;
 	}
 
+	~WorkerService()
+	{
+		Dispose(false);
+	}
+
 
 	public async Task DeleteAsync(Guid workerId)
 	{
@@ -73,5 +78,19 @@ public sealed class WorkerService : IWorkerService
 
 		var savedWorker = mapper.Map<Worker>(dbWorker);
 		return savedWorker;
+	}
+
+	public void Dispose()
+	{
+		Dispose(disposing: true);
+		GC.SuppressFinalize(this);
+	}
+
+	private void Dispose(bool disposing)
+	{
+		if (disposing)
+		{
+			dataContext.Dispose();
+		}
 	}
 }
