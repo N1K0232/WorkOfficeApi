@@ -1,5 +1,6 @@
 using Hellang.Middleware.ProblemDetails;
 using MicroElements.Swashbuckle.FluentValidation.AspNetCore;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Serilog;
@@ -84,8 +85,17 @@ builder.Services.AddProblemDetails(options =>
 
     options.Map<NullReferenceException>(_ => new StatusCodeProblemDetails(StatusCodes.Status400BadRequest));
     options.Map<HttpRequestException>(_ => new StatusCodeProblemDetails(StatusCodes.Status408RequestTimeout));
-    options.Map<InvalidOperationException>(_ => new StatusCodeProblemDetails(StatusCodes.Status400BadRequest));
+    options.Map<InvalidOperationException>(ex =>
+    {
+        if (ex is ObjectDisposedException)
+        {
+            return new StatusCodeProblemDetails(StatusCodes.Status503ServiceUnavailable);
+        }
+
+        return new StatusCodeProblemDetails(StatusCodes.Status400BadRequest);
+    });
     options.Map<NotImplementedException>(_ => new StatusCodeProblemDetails(StatusCodes.Status503ServiceUnavailable));
+    options.Map<SqlException>(_ => new StatusCodeProblemDetails(StatusCodes.Status503ServiceUnavailable));
     options.Map<DbUpdateException>(_ => new StatusCodeProblemDetails(StatusCodes.Status500InternalServerError));
 });
 
