@@ -3,15 +3,18 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using System.Data;
 using System.Reflection;
 using WorkOfficeApi.DataAccessLayer.Entities.Common;
-using WorkOfficeApi.DataAccessLayer.Extensions;
 
 namespace WorkOfficeApi.DataAccessLayer;
 
 public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 {
+	private static readonly MethodInfo queryFilterMethod;
+	private readonly ValueConverter<string, string> trimStringConverter;
+
 	private readonly string connectionString;
 
 	private IDbConnection connection;
@@ -19,8 +22,20 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 
 	private bool disposed;
 
+	static DataContext()
+	{
+		queryFilterMethod = typeof(DataContext).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+			.Single(t => t.IsGenericMethod && t.Name == nameof(SetQueryFilter));
+	}
+
+	/// <summary>
+	/// 
+	/// </summary>
+	/// <param name="options"></param>
 	public DataContext(DbContextOptions<DataContext> options) : base(options)
 	{
+		trimStringConverter = new ValueConverter<string, string>(v => v.Trim(), v => v.Trim());
+
 		connectionString = Database.GetConnectionString();
 
 		connection = null;
@@ -315,17 +330,87 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 		});
 	}
 
+	protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+	{
+		base.ConfigureConventions(configurationBuilder);
+	}
+
 	protected override void OnModelCreating(ModelBuilder modelBuilder)
 	{
-		ThrowIfDisposed();
-
 		modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
-		modelBuilder.ApplyQueryFilter(this);
-		modelBuilder.ApplyTrimStringConverter();
+		ApplyTrimStringConverter(modelBuilder);
+		ApplyQueryFilter(modelBuilder);
 
 		base.OnModelCreating(modelBuilder);
 	}
 
+	/// <summary>
+	/// applies the converter to all the string properties in the database
+	/// </summary>
+	/// <param name="modelBuilder"></param>
+	private void ApplyTrimStringConverter(ModelBuilder modelBuilder)
+	{
+		foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+		{
+			foreach (var property in entityType.GetProperties())
+			{
+				if (property.ClrType == typeof(string))
+				{
+					modelBuilder.Entity(entityType.Name)
+						.Property(property.Name)
+						.HasConversion(trimStringConverter);
+				}
+			}
+		}
+	}
+
+	/// <summary>
+	/// Applies the query filter to all the <see cref="DeletableEntity"/> entities
+	/// </summary>
+	/// <param name="modelBuilder"></param>
+	private void ApplyQueryFilter(ModelBuilder modelBuilder)
+	{
+		DataContext dataContext = this;
+
+		var entities = modelBuilder.Model
+			.GetEntityTypes()
+			.Where(t => typeof(DeletableEntity).IsAssignableFrom(t.ClrType))
+			.ToList();
+
+		foreach (var type in entities.Select(t => t.ClrType))
+		{
+			var methods = SetGlobalQueryMethods(type);
+
+			foreach (var method in methods)
+			{
+				var genericMethod = method.MakeGenericMethod(type);
+				genericMethod.Invoke(dataContext, new object[] { modelBuilder });
+			}
+		}
+	}
+
+	/// <summary>
+	/// creates a list of methods if the param type derives from <see cref="DeletableEntity"/> object/>
+	/// </summary>
+	/// <param name="type">the entity type</param>
+	/// <returns>the list of methods</returns>
+	private static IEnumerable<MethodInfo> SetGlobalQueryMethods(Type type)
+	{
+		var result = new List<MethodInfo>();
+
+		if (typeof(DeletableEntity).IsAssignableFrom(type))
+		{
+			result.Add(queryFilterMethod);
+		}
+
+		return result;
+	}
+
+	/// <summary>
+	/// gets all the <see cref="BaseEntity"/> entries tracked by the <see cref="ChangeTracker"/>
+	/// that are added, modified or deleted
+	/// </summary>
+	/// <returns>the entities</returns>
 	private IEnumerable<EntityEntry> Entries()
 	{
 		var entries = ChangeTracker.Entries()
@@ -335,7 +420,12 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 		return entries.Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToList();
 	}
 
-	private void ApplyQueryFilter<TEntity>(ModelBuilder builder) where TEntity : DeletableEntity
+	/// <summary>
+	/// sets the query filter to all the entities that derives from <see cref="DeletableEntity"/> class
+	/// </summary>
+	/// <typeparam name="TEntity"></typeparam>
+	/// <param name="builder"></param>
+	private void SetQueryFilter<TEntity>(ModelBuilder builder) where TEntity : DeletableEntity
 	{
 		ThrowIfDisposed();
 		builder.Entity<TEntity>().HasQueryFilter(x => !x.IsDeleted && x.DeletedDate == null);
