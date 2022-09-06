@@ -12,6 +12,8 @@ namespace WorkOfficeApi.DataAccessLayer;
 
 public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 {
+	private readonly string connectionString;
+
 	private IDbConnection connection;
 	private CancellationTokenSource source;
 
@@ -19,20 +21,29 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 
 	public DataContext(DbContextOptions<DataContext> options) : base(options)
 	{
-		connection = new SqlConnection(Database.GetConnectionString());
+		connectionString = Database.GetConnectionString();
+
+		connection = null;
 		source = null;
 
 		disposed = false;
 	}
 
+	/// <summary>
+	/// gets the open connection to the database
+	/// </summary>
 	private IDbConnection Connection
 	{
 		get
 		{
 			ThrowIfDisposed();
 
+			//if the connection is null I create a new instance
+			connection ??= new SqlConnection(connectionString);
+
 			try
 			{
+				//if the connection is closed I open it
 				if (connection.State is ConnectionState.Closed)
 				{
 					connection.Open();
@@ -50,6 +61,11 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 			return connection;
 		}
 	}
+
+	/// <summary>
+	/// gets the <see cref="CancellationToken"/> for executing
+	/// asynchronous operations
+	/// </summary>
 	private CancellationToken CancellationToken
 	{
 		get
@@ -73,6 +89,13 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 		}
 	}
 
+	/// <summary>
+	/// deletes the specified entity in the database
+	/// </summary>
+	/// <typeparam name="TEntity">the entity type</typeparam>
+	/// <param name="entity">the entity that will be deleted</param>
+	/// <exception cref="ArgumentNullException">the entity is null</exception>
+	/// <exception cref="ObjectDisposedException">the <see cref="DataContext"/> was disposed</exception>
 	public void Delete<TEntity>(TEntity entity) where TEntity : BaseEntity
 	{
 		ThrowIfDisposed();
@@ -85,6 +108,13 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 		Set<TEntity>().Remove(entity);
 	}
 
+	/// <summary>
+	/// deletes a list of entity from the database
+	/// </summary>
+	/// <typeparam name="TEntity">the type of the entity</typeparam>
+	/// <param name="entities">the list of entities</param>
+	/// <exception cref="ArgumentNullException">the list is null or doesn't contains elements</exception>
+	/// <exception cref="ObjectDisposedException">the <see cref="DataContext"/> was disposed</exception>
 	public void Delete<TEntity>(IEnumerable<TEntity> entities) where TEntity : BaseEntity
 	{
 		ThrowIfDisposed();
@@ -97,6 +127,13 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 		Set<TEntity>().RemoveRange(entities);
 	}
 
+	/// <summary>
+	/// updates the specified entity in the database
+	/// </summary>
+	/// <typeparam name="TEntity">the entity type</typeparam>
+	/// <param name="entity">the entity that will be edited</param>
+	/// <exception cref="ArgumentNullException">the entity is null</exception>
+	/// <exception cref="ObjectDisposedException">the <see cref="DataContext"/> was disposed</exception>
 	public void Edit<TEntity>(TEntity entity) where TEntity : BaseEntity
 	{
 		ThrowIfDisposed();
@@ -109,6 +146,13 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 		Set<TEntity>().Update(entity);
 	}
 
+	/// <summary>
+	/// gets the entity giving its id
+	/// </summary>
+	/// <typeparam name="TEntity">the entity type</typeparam>
+	/// <param name="keyValues">the primary keys</param>
+	/// <returns>the entity</returns>
+	/// <exception cref="ObjectDisposedException">the <see cref="DataContext"/> was disposed</exception>
 	public Task<TEntity> GetAsync<TEntity>(params object[] keyValues) where TEntity : BaseEntity
 	{
 		ThrowIfDisposed();
@@ -119,6 +163,14 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 		return set.FindAsync(keyValues, token).AsTask();
 	}
 
+	/// <summary>
+	/// gets the query for the specified table
+	/// </summary>
+	/// <typeparam name="TEntity">the entity type</typeparam>
+	/// <param name="ignoreQueryFilters">true if I want to retrieve all the entities even if they have a specified query filter. otherwise false</param>
+	/// <param name="trackingChanges">true if EntityFramework ChangeTracker should tracking the entity for eventual updates. otherwise false/></param>
+	/// <returns>the query for the specified table</returns>
+	/// <exception cref="ObjectDisposedException">the <see cref="DataContext"/> was disposed</exception>
 	public IQueryable<TEntity> GetData<TEntity>(bool ignoreQueryFilters = false, bool trackingChanges = false) where TEntity : BaseEntity
 	{
 		ThrowIfDisposed();
@@ -135,6 +187,13 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 			set.AsNoTrackingWithIdentityResolution();
 	}
 
+	/// <summary>
+	/// adds the specified entity in the database
+	/// </summary>
+	/// <typeparam name="TEntity">the entity typ</typeparam>
+	/// <param name="entity">the entity that will be added</param>
+	/// /// <exception cref="ArgumentNullException">the entity is null</exception>
+	/// <exception cref="ObjectDisposedException">the <see cref="DataContext"/> was disposed</exception>
 	public void Insert<TEntity>(TEntity entity) where TEntity : BaseEntity
 	{
 		ThrowIfDisposed();
@@ -147,6 +206,10 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 		Set<TEntity>().Add(entity);
 	}
 
+	/// <summary>
+	/// saves the changes made in the database
+	/// </summary>
+	/// <returns>the task of the current action</returns>
 	public Task SaveAsync()
 	{
 		ThrowIfDisposed();
@@ -223,6 +286,12 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 		}
 	}
 
+	/// <summary>
+	/// commits changes in the database if there are different
+	/// changes between the tables
+	/// </summary>
+	/// <param name="action">the action that will be performed</param>
+	/// <returns>the task of the current action</returns>
 	public Task ExecuteTransactionAsync(Func<Task> action)
 	{
 		ThrowIfDisposed();
@@ -286,6 +355,11 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 		{
 			if (connection is not null)
 			{
+				if (connection.State is ConnectionState.Open)
+				{
+					connection.Close();
+				}
+
 				connection.Dispose();
 				connection = null;
 			}
