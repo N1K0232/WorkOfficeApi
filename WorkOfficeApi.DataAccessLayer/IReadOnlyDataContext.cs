@@ -2,7 +2,7 @@
 
 namespace WorkOfficeApi.DataAccessLayer;
 
-public interface IReadOnlyDataContext
+public interface IReadOnlyDataContext : IDisposable
 {
     IQueryable<TEntity> GetData<TEntity>(bool ignoreQueryFilters = false, bool trackingChanges = false) where TEntity : BaseEntity;
 

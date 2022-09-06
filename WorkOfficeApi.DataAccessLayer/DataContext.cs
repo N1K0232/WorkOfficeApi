@@ -1,7 +1,9 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
+using System.Data;
 using System.Reflection;
 using WorkOfficeApi.DataAccessLayer.Entities.Common;
 using WorkOfficeApi.DataAccessLayer.Extensions;
@@ -10,13 +12,42 @@ namespace WorkOfficeApi.DataAccessLayer;
 
 public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 {
+	private IDbConnection connection;
 	private CancellationTokenSource source;
+
+	private bool disposed;
 
 	public DataContext(DbContextOptions<DataContext> options) : base(options)
 	{
+		connection = new SqlConnection(Database.GetConnectionString());
 		source = null;
+
+		disposed = false;
 	}
 
+	private IDbConnection Connection
+	{
+		get
+		{
+			try
+			{
+				if (connection.State is ConnectionState.Closed)
+				{
+					connection.Open();
+				}
+			}
+			catch (SqlException ex)
+			{
+				throw ex;
+			}
+			catch (InvalidOperationException ex)
+			{
+				throw ex;
+			}
+
+			return connection;
+		}
+	}
 	private CancellationToken CancellationToken
 	{
 		get
@@ -216,5 +247,27 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 	private void ApplyQueryFilter<TEntity>(ModelBuilder builder) where TEntity : DeletableEntity
 	{
 		builder.Entity<TEntity>().HasQueryFilter(x => !x.IsDeleted && x.DeletedDate == null);
+	}
+
+	public override void Dispose()
+	{
+		base.Dispose();
+
+		Dispose(disposing: true);
+		GC.SuppressFinalize(this);
+	}
+
+	private void Dispose(bool disposing)
+	{
+		if (disposing && !disposed)
+		{
+			if (connection is not null)
+			{
+				connection.Dispose();
+				connection = null;
+			}
+
+			disposed = true;
+		}
 	}
 }

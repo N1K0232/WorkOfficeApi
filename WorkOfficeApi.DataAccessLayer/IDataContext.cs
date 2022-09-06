@@ -2,7 +2,7 @@
 
 namespace WorkOfficeApi.DataAccessLayer;
 
-public interface IDataContext : IReadOnlyDataContext
+public interface IDataContext : IReadOnlyDataContext, IDisposable
 {
     void Delete<TEntity>(TEntity entity) where TEntity : BaseEntity;
 
