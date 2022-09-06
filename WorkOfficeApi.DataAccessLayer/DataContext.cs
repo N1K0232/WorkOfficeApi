@@ -267,6 +267,12 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 				connection = null;
 			}
 
+			if (source is not null)
+			{
+				source.Dispose();
+				source = null;
+			}
+
 			disposed = true;
 		}
 	}
