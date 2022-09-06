@@ -29,6 +29,8 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 	{
 		get
 		{
+			ThrowIfDisposed();
+
 			try
 			{
 				if (connection.State is ConnectionState.Closed)
@@ -52,6 +54,8 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 	{
 		get
 		{
+			ThrowIfDisposed();
+
 			CancellationToken cancellationToken;
 			source ??= new CancellationTokenSource();
 
@@ -71,6 +75,8 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 
 	public void Delete<TEntity>(TEntity entity) where TEntity : BaseEntity
 	{
+		ThrowIfDisposed();
+
 		if (entity is null)
 		{
 			throw new ArgumentNullException(nameof(entity));
@@ -81,6 +87,8 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 
 	public void Delete<TEntity>(IEnumerable<TEntity> entities) where TEntity : BaseEntity
 	{
+		ThrowIfDisposed();
+
 		if (entities is null)
 		{
 			throw new ArgumentNullException(nameof(entities));
@@ -91,6 +99,8 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 
 	public void Edit<TEntity>(TEntity entity) where TEntity : BaseEntity
 	{
+		ThrowIfDisposed();
+
 		if (entity is null)
 		{
 			throw new ArgumentException("entity can't be null", nameof(entity));
@@ -101,6 +111,8 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 
 	public Task<TEntity> GetAsync<TEntity>(params object[] keyValues) where TEntity : BaseEntity
 	{
+		ThrowIfDisposed();
+
 		CancellationToken token = CancellationToken;
 
 		var set = Set<TEntity>();
@@ -109,6 +121,8 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 
 	public IQueryable<TEntity> GetData<TEntity>(bool ignoreQueryFilters = false, bool trackingChanges = false) where TEntity : BaseEntity
 	{
+		ThrowIfDisposed();
+
 		var set = Set<TEntity>().AsQueryable();
 
 		if (ignoreQueryFilters)
@@ -123,6 +137,8 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 
 	public void Insert<TEntity>(TEntity entity) where TEntity : BaseEntity
 	{
+		ThrowIfDisposed();
+
 		if (entity is null)
 		{
 			throw new ArgumentException("entity can't be null", nameof(entity));
@@ -133,6 +149,8 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 
 	public Task SaveAsync()
 	{
+		ThrowIfDisposed();
+
 		CancellationToken token = CancellationToken;
 		token.ThrowIfCancellationRequested();
 
@@ -207,6 +225,8 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 
 	public Task ExecuteTransactionAsync(Func<Task> action)
 	{
+		ThrowIfDisposed();
+
 		if (action is null)
 		{
 			throw new ArgumentNullException(nameof(action), "cannot perform action");
@@ -228,6 +248,8 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 
 	protected override void OnModelCreating(ModelBuilder modelBuilder)
 	{
+		ThrowIfDisposed();
+
 		modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
 		modelBuilder.ApplyQueryFilter(this);
 		modelBuilder.ApplyTrimStringConverter();
@@ -246,6 +268,7 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 
 	private void ApplyQueryFilter<TEntity>(ModelBuilder builder) where TEntity : DeletableEntity
 	{
+		ThrowIfDisposed();
 		builder.Entity<TEntity>().HasQueryFilter(x => !x.IsDeleted && x.DeletedDate == null);
 	}
 
@@ -274,6 +297,15 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 			}
 
 			disposed = true;
+		}
+	}
+
+	private void ThrowIfDisposed()
+	{
+		if (disposed)
+		{
+			Type currentType = typeof(DataContext);
+			throw new ObjectDisposedException(currentType.FullName);
 		}
 	}
 }
