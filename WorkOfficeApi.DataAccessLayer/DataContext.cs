@@ -11,7 +11,10 @@ using WorkOfficeApi.DataAccessLayer.Entities.Common;
 
 namespace WorkOfficeApi.DataAccessLayer;
 
-public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext, IDapperContext
+public sealed class DataContext : DbContext,
+	IDataContext,
+	IReadOnlyDataContext,
+	IDapperContext
 {
 	private static readonly MethodInfo queryFilterMethod;
 	private readonly ValueConverter<string, string> trimStringConverter;
@@ -25,8 +28,12 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext,
 
 	static DataContext()
 	{
-		queryFilterMethod = typeof(DataContext).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
-			.Single(t => t.IsGenericMethod && t.Name == nameof(SetQueryFilter));
+		Type type = GetCurrentType();
+		BindingFlags bindingFlags = BindingFlags.Instance | BindingFlags.NonPublic;
+		IEnumerable<MethodInfo> methods = type.GetMethods(bindingFlags);
+		string methodName = nameof(SetQueryFilter);
+
+		queryFilterMethod = methods.Single(t => t.IsGenericMethod && t.Name == methodName);
 	}
 
 	/// <summary>
@@ -504,8 +511,13 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext,
 	{
 		if (disposed)
 		{
-			Type currentType = typeof(DataContext);
+			Type currentType = GetCurrentType();
 			throw new ObjectDisposedException(currentType.FullName);
 		}
+	}
+
+	private static Type GetCurrentType()
+	{
+		return typeof(DataContext);
 	}
 }
