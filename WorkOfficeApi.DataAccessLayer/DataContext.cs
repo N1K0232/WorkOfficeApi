@@ -1,4 +1,5 @@
-﻿using Microsoft.Data.SqlClient;
+﻿using Dapper;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -10,14 +11,14 @@ using WorkOfficeApi.DataAccessLayer.Entities.Common;
 
 namespace WorkOfficeApi.DataAccessLayer;
 
-public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
+public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext, IDapperContext
 {
 	private static readonly MethodInfo queryFilterMethod;
 	private readonly ValueConverter<string, string> trimStringConverter;
 
 	private readonly string connectionString;
 
-	private IDbConnection connection;
+	private SqlConnection activeConnection;
 	private CancellationTokenSource source;
 
 	private bool disposed;
@@ -29,16 +30,16 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 	}
 
 	/// <summary>
-	/// 
+	/// creates a new instance of the <see cref="DataContext"/> class
 	/// </summary>
-	/// <param name="options"></param>
+	/// <param name="options">the options for this context</param>
 	public DataContext(DbContextOptions<DataContext> options) : base(options)
 	{
 		trimStringConverter = new ValueConverter<string, string>(v => v.Trim(), v => v.Trim());
 
 		connectionString = Database.GetConnectionString();
 
-		connection = null;
+		activeConnection = null;
 		source = null;
 
 		disposed = false;
@@ -47,21 +48,21 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 	/// <summary>
 	/// gets the open connection to the database
 	/// </summary>
-	private IDbConnection Connection
+	private IDbConnection InnerConnection
 	{
 		get
 		{
 			ThrowIfDisposed();
 
 			//if the connection is null I create a new instance
-			connection ??= new SqlConnection(connectionString);
+			activeConnection ??= new SqlConnection(connectionString);
 
 			try
 			{
 				//if the connection is closed I open it
-				if (connection.State is ConnectionState.Closed)
+				if (activeConnection.State is ConnectionState.Closed)
 				{
-					connection.Open();
+					activeConnection.Open();
 				}
 			}
 			catch (SqlException ex)
@@ -73,7 +74,7 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 				throw ex;
 			}
 
-			return connection;
+			return activeConnection;
 		}
 	}
 
@@ -330,6 +331,41 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 		});
 	}
 
+	/// <summary>
+	/// gets a list of entities from the database such as views
+	/// </summary>
+	/// <typeparam name="TEntity">the return type object</typeparam>
+	/// <param name="sql">the query to execute</param>
+	/// <param name="param">the parameter (default value: <see langword="null"/>)</param>
+	/// <param name="transaction">the transaction (default value: <see langword="null"/>)</param>
+	/// <param name="commandType">the commandType (default value: <see langword="null"/>)</param>
+	/// <returns>the task with the list result</returns>
+	public Task<IEnumerable<TEntity>> GetAsync<TEntity>(string sql,
+		object param = null,
+		IDbTransaction transaction = null,
+		CommandType? commandType = null) where TEntity : class
+	{
+		ThrowIfDisposed();
+		return InnerConnection.QueryAsync<TEntity>(sql, param, transaction, commandType: commandType);
+	}
+
+	/// <summary>
+	/// executes an action in the database
+	/// </summary>
+	/// <param name="sql">the query</param>
+	/// <param name="param">the parameter (default value: <see langword="null"/>)</param>
+	/// <param name="transaction">the transaction (default value: <see langword="null"/>)</param>
+	/// <param name="commandType">the commandType (default value: <see langword="null"/>)</param>
+	/// <returns>the task with the executed action</returns>
+	public Task ExecuteAsync(string sql,
+		object param = null,
+		IDbTransaction transaction = null,
+		CommandType? commandType = null)
+	{
+		ThrowIfDisposed();
+		return InnerConnection.ExecuteAsync(sql, param, transaction, commandType: commandType);
+	}
+
 	protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
 	{
 		base.ConfigureConventions(configurationBuilder);
@@ -443,15 +479,15 @@ public sealed class DataContext : DbContext, IDataContext, IReadOnlyDataContext
 	{
 		if (disposing && !disposed)
 		{
-			if (connection is not null)
+			if (activeConnection is not null)
 			{
-				if (connection.State is ConnectionState.Open)
+				if (activeConnection.State is ConnectionState.Open)
 				{
-					connection.Close();
+					activeConnection.Close();
 				}
 
-				connection.Dispose();
-				connection = null;
+				activeConnection.Dispose();
+				activeConnection = null;
 			}
 
 			if (source is not null)

@@ -54,6 +54,10 @@ builder.Services.AddScoped<IDataContext>(services =>
 {
     return services.GetRequiredService<DataContext>();
 });
+builder.Services.AddScoped<IDapperContext>(services =>
+{
+    return services.GetRequiredService<DataContext>();
+});
 
 builder.Services.AddProblemDetails(options =>
 {
